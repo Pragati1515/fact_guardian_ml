@@ -95,12 +95,15 @@ st.markdown("""
         font-size: 0.8em;
         font-weight: 500;
     }
-    .recommendation-box {
-        background: linear-gradient(135deg, #e3f2fd, #bbdefb);
-        padding: 20px;
-        border-radius: 12px;
-        margin: 15px 0;
-        border-left: 4px solid #1976d2;
+    .recommendation-box 
+    {
+    background: #000000;  /* Black background */
+    color: white;         /* White text */
+    padding: 20px;
+    border-radius: 12px;
+    margin: 15px 0;
+    border-left: 4px solid #667eea;  /* Keep the accent color */
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
     }
     .upload-success {
         background: linear-gradient(135deg, #e8f5e8, #c8e6c9);
