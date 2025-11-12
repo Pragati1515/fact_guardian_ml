@@ -1,4 +1,4 @@
-# fact_guardian_ml.py - WITH MANUAL CSV UPLOAD
+# fact_guardian_ml.py - FIXED CLAIM VERIFICATION
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -8,7 +8,7 @@ import re
 from textblob import TextBlob
 import matplotlib.pyplot as plt
 import nltk
-import io
+import os
 
 # Download NLTK data
 try:
@@ -47,61 +47,63 @@ st.markdown("""
         margin-bottom: 30px;
         box-shadow: 0 10px 30px rgba(0,0,0,0.2);
     }
-    .upload-card {
-        background: #f8f9fa;
+    .fact-check-card {
+        background: white;
         padding: 20px;
         border-radius: 12px;
         margin: 15px 0;
-        border-left: 4px solid #28a745;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        border: 1px solid #e0e0e0;
+    }
+    .rating-true {
+        background: linear-gradient(135deg, #4CAF50, #45a049);
+        color: white;
+        padding: 6px 12px;
+        border-radius: 20px;
+        font-weight: bold;
+        font-size: 0.9em;
+    }
+    .rating-false {
+        background: linear-gradient(135deg, #f44336, #da190b);
+        color: white;
+        padding: 6px 12px;
+        border-radius: 20px;
+        font-weight: bold;
+        font-size: 0.9em;
+    }
+    .rating-mixed {
+        background: linear-gradient(135deg, #FF9800, #f57c00);
+        color: white;
+        padding: 6px 12px;
+        border-radius: 20px;
+        font-weight: bold;
+        font-size: 0.9em;
+    }
+    .rating-unknown {
+        background: linear-gradient(135deg, #757575, #616161);
+        color: white;
+        padding: 6px 12px;
+        border-radius: 20px;
+        font-weight: bold;
+        font-size: 0.9em;
+    }
+    .publisher-badge {
+        background: #e3f2fd;
+        color: #1976d2;
+        padding: 4px 10px;
+        border-radius: 12px;
+        font-size: 0.8em;
+        font-weight: 500;
+    }
+    .result-section {
+        background: #f8f9fa;
+        padding: 20px;
+        border-radius: 10px;
+        margin: 15px 0;
+        border-left: 4px solid #667eea;
     }
 </style>
 """, unsafe_allow_html=True)
-
-class DataManager:
-    """Manages training data - manual upload or synthetic"""
-    
-    def __init__(self):
-        self.uploaded_data = None
-    
-    def load_uploaded_data(self, uploaded_file):
-        """Load data from uploaded CSV file"""
-        try:
-            if uploaded_file is not None:
-                df = pd.read_csv(uploaded_file)
-                st.success(f"✅ Successfully loaded {len(df)} records from uploaded file")
-                return df
-        except Exception as e:
-            st.error(f"❌ Error loading file: {str(e)}")
-        return None
-    
-    def validate_data(self, df):
-        """Validate uploaded data has required columns"""
-        required_columns = ['statement', 'rating']
-        if all(col in df.columns for col in required_columns):
-            return True
-        else:
-            st.error(f"❌ Uploaded file must contain columns: {required_columns}")
-            return False
-    
-    def map_ratings_to_labels(self, df):
-        """Convert Politifact ratings to binary labels"""
-        df = df.copy()
-        
-        # Map ratings to binary labels
-        def map_rating(rating):
-            rating_str = str(rating).lower()
-            if any(true in rating_str for true in ['true', 'mostly true', 'half true']):
-                return 1  # TRUE
-            elif any(false in rating_str for false in ['false', 'pants on fire', 'mostly false']):
-                return 0  # FALSE
-            else:
-                return -1  # UNKNOWN
-        
-        df['label'] = df['rating'].apply(map_rating)
-        valid_data = df[df['label'] != -1]
-        
-        st.info(f"📊 Rating distribution: {len(valid_data[valid_data['label']==1])} True, {len(valid_data[valid_data['label']==0])} False")
-        return valid_data
 
 class MLFactChecker:
     def __init__(self):
@@ -114,29 +116,10 @@ class MLFactChecker:
         }
         self.vectorizer = TfidfVectorizer(max_features=3000, stop_words='english', ngram_range=(1, 2))
         self.is_trained = False
-        self.data_manager = DataManager()
+        self.model_results = {}
         
-    def create_training_data(self, use_uploaded_data=False, uploaded_file=None):
-        """Create training data - can use uploaded CSV or synthetic data"""
-        if use_uploaded_data and uploaded_file is not None:
-            # Use uploaded CSV data
-            df = self.data_manager.load_uploaded_data(uploaded_file)
-            if df is not None and self.data_manager.validate_data(df):
-                valid_data = self.data_manager.map_ratings_to_labels(df)
-                if len(valid_data) >= 10:  # Minimum data requirement
-                    claims = valid_data['statement'].tolist()
-                    labels = valid_data['label'].tolist()
-                    st.success(f"✅ Training with {len(claims)} uploaded fact-checks")
-                    return claims, labels
-                else:
-                    st.warning("❌ Uploaded data has insufficient valid records. Using synthetic data.")
-        
-        # Fallback to synthetic data
-        st.info("🔄 Using enhanced synthetic training data")
-        return self._create_synthetic_data()
-    
-    def _create_synthetic_data(self):
-        """Enhanced synthetic training data"""
+    def create_training_data(self):
+        """Create comprehensive training data for fact-checking"""
         true_claims = [
             "COVID-19 vaccines are safe and effective according to global health authorities",
             "Climate change is primarily caused by human activities and greenhouse gas emissions",
@@ -178,13 +161,13 @@ class MLFactChecker:
         
         return claims, labels
     
-    def train_models(self, use_uploaded_data=False, uploaded_file=None):
+    def train_models(self):
         """Train all 5 ML models"""
         progress_bar = st.progress(0)
         status_text = st.empty()
         
-        # Create training data (uploaded or synthetic)
-        claims, labels = self.create_training_data(use_uploaded_data, uploaded_file)
+        # Create training data
+        claims, labels = self.create_training_data()
         
         # Feature engineering
         status_text.text("🔧 Extracting features from training data...")
@@ -192,21 +175,23 @@ class MLFactChecker:
         y = np.array(labels)
         progress_bar.progress(20)
         
-        # Train-test split with stratification
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=0.25, random_state=42, stratify=y
-        )
-        
-        model_results = {}
+        # Train-test split
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25, random_state=42, stratify=y)
         
         for i, (name, model) in enumerate(self.models.items()):
             status_text.text(f"🤖 Training {name}...")
+            
+            # Train model
             model.fit(X_train, y_train)
+            
+            # Predictions
             y_pred = model.predict(X_test)
             accuracy = accuracy_score(y_test, y_pred)
-            cv_scores = cross_val_score(model, X, y, cv=5, scoring='accuracy')
             
-            model_results[name] = {
+            # Cross-validation
+            cv_scores = cross_val_score(model, X, y, cv=3, scoring='accuracy')
+            
+            self.model_results[name] = {
                 'model': model,
                 'accuracy': accuracy,
                 'cv_mean': np.mean(cv_scores),
@@ -224,29 +209,32 @@ class MLFactChecker:
         progress_bar.empty()
         
         self.is_trained = True
-        self.model_results = model_results
-        return model_results
+        return self.model_results
     
     def predict_claim(self, claim_text):
         """Predict truthfulness using all trained models"""
         if not self.is_trained:
-            return None
+            st.error("❌ Models not trained yet. Please train models first.")
+            return None, None
             
+        # Transform input
         X_input = self.vectorizer.transform([claim_text])
+        
         predictions = {}
         confidence_scores = {}
         
-        for name, result in self.data_manager.model_results.items():
+        for name, result in self.model_results.items():
             model = result['model']
             
+            # Get prediction and probability
             if hasattr(model, 'predict_proba'):
                 proba = model.predict_proba(X_input)[0]
                 prediction = model.predict(X_input)[0]
                 confidence = max(proba)
             else:
-                decision = model.decision_function(X_input)[0]
+                # For SVM without probability
                 prediction = model.predict(X_input)[0]
-                confidence = min(1.0, max(0.0, abs(decision) / 2.0 + 0.5))
+                confidence = 0.7  # Default confidence for non-probability models
                 
             predictions[name] = prediction
             confidence_scores[name] = confidence
@@ -254,78 +242,121 @@ class MLFactChecker:
         return predictions, confidence_scores
 
 def get_fact_check_results(query):
-    """Fetch fact-check results from Google API"""
+    """Fetch fact-check results from Google API - FIXED VERSION"""
     if not API_KEY:
-        st.error("❌ API key not configured.")
+        st.error("❌ API key not configured. Please check your secrets.toml file.")
         return []
         
     url = "https://factchecktools.googleapis.com/v1alpha1/claims:search"
-    params = {"query": query, "key": API_KEY}
+    params = {
+        "query": query,
+        "key": API_KEY,
+        "languageCode": "en"
+    }
     
     try:
-        with st.spinner("🔍 Searching verified fact-checking sources..."):
-            response = requests.get(url, params=params, timeout=15)
+        with st.spinner("🔍 Searching 100+ verified fact-checking sources..."):
+            response = requests.get(url, params=params, timeout=20)
+            
             if response.status_code != 200:
+                st.error(f"❌ API Error {response.status_code}: {response.text}")
                 return []
+                
             data = response.json()
         
         results = []
-        for claim in data.get("claims", []):
-            for review in claim.get("claimReview", []):
-                results.append({
-                    "publisher": review.get("publisher", {}).get("name", "Unknown Source"),
-                    "rating": review.get("textualRating", "No Rating"),
-                    "url": review.get("url", ""),
-                    "title": review.get("title", "No Title Available"),
-                    "claim_date": claim.get("claimDate", "")
-                })
+        if "claims" in data and data["claims"]:
+            for claim in data.get("claims", []):
+                claim_text = claim.get("text", "")
+                
+                for review in claim.get("claimReview", []):
+                    publisher = review.get("publisher", {}).get("name", "Unknown Source")
+                    rating = review.get("textualRating", "No Rating")
+                    url = review.get("url", "")
+                    title = review.get("title", "No Title Available")
+                    
+                    results.append({
+                        "publisher": publisher,
+                        "rating": rating,
+                        "url": url,
+                        "title": title,
+                        "original_claim": claim_text,
+                        "claim_date": claim.get("claimDate", "")
+                    })
+            
+            st.success(f"✅ Found {len(results)} fact-check results")
+        else:
+            st.warning("⚠️ No direct fact-checks found for this claim")
+            
         return results
-    except Exception:
+        
+    except requests.exceptions.Timeout:
+        st.error("❌ API request timed out. Please try again.")
         return []
+    except requests.exceptions.RequestException as e:
+        st.error(f"❌ Network error: {str(e)}")
+        return []
+    except Exception as e:
+        st.error(f"❌ Unexpected error: {str(e)}")
+        return []
+
+def get_rating_class(rating):
+    """Get CSS class for different rating types"""
+    rating_lower = str(rating).lower()
+    if 'true' in rating_lower and 'false' not in rating_lower and 'mostly' not in rating_lower:
+        return 'rating-true'
+    elif 'false' in rating_lower:
+        return 'rating-false'
+    elif 'mix' in rating_lower or 'half' in rating_lower or 'mostly' in rating_lower:
+        return 'rating-mixed'
+    else:
+        return 'rating-unknown'
 
 def main():
     st.markdown("""
     <div class="guardian-header">
         <h1>🛡️ FactGuardian ML Pro</h1>
-        <h3>AI Fact Verification with Manual Data Upload & 5 ML Models</h3>
+        <h3>5-Model Machine Learning Fact Verification System</h3>
     </div>
     """, unsafe_allow_html=True)
     
     # Initialize ML system
     if 'ml_checker' not in st.session_state:
         st.session_state.ml_checker = MLFactChecker()
+        st.session_state.models_trained = False
     
     ml_checker = st.session_state.ml_checker
     
-    # Sidebar with data upload options
+    # Sidebar for configuration
     with st.sidebar:
         st.markdown("### ⚙️ Configuration")
-        st.info("**API Status:** " + ("✅ Connected" if API_KEY else "❌ Not Configured"))
+        st.info(f"**API Status:** {'✅ Connected' if API_KEY else '❌ Not Configured'}")
         
-        st.markdown("### 📁 Data Source")
-        use_uploaded_data = st.checkbox("Use Uploaded CSV Data", value=False,
-                                       help="Upload your own Politifact CSV file for training")
+        if API_KEY:
+            # Test API connection
+            if st.button("🔍 Test API Connection", use_container_width=True):
+                with st.spinner("Testing API connection..."):
+                    test_results = get_fact_check_results("COVID vaccines contain microchips")
+                    if test_results:
+                        st.success("✅ API connection successful!")
+                    else:
+                        st.error("❌ API connection failed")
         
-        uploaded_file = None
-        if use_uploaded_data:
-            st.markdown("""
-            <div class="upload-card">
-                <h4>📤 Upload Politifact CSV</h4>
-                <p>File should contain:</p>
-                <ul>
-                    <li><code>statement</code> - The fact claim</li>
-                    <li><code>rating</code> - Truth rating</li>
-                </ul>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            uploaded_file = st.file_uploader("Choose CSV file", type=['csv'], 
-                                           help="Upload your Politifact data export")
+        st.markdown("### 🤖 ML Models")
+        st.write("""
+        **5 Ensemble Models:**
+        - Random Forest
+        - Support Vector Machine  
+        - Logistic Regression
+        - Naive Bayes
+        - Decision Tree
+        """)
         
-        if st.button("🔄 Train Models", use_container_width=True):
-            with st.spinner("Training models with selected data..."):
-                ml_checker.train_models(use_uploaded_data=use_uploaded_data, 
-                                      uploaded_file=uploaded_file)
+        if st.button("🔄 Train Models First", use_container_width=True, type="primary"):
+            with st.spinner("Training all 5 ML models..."):
+                ml_checker.train_models()
+                st.session_state.models_trained = True
+            st.success("✅ Models trained successfully!")
             st.rerun()
     
     # Main content area
@@ -333,26 +364,43 @@ def main():
     
     with col1:
         st.markdown("### 🔍 Claim Verification")
+        
+        # Quick test claims
+        st.markdown("**Quick Test Claims:**")
+        quick_col1, quick_col2 = st.columns(2)
+        
+        with quick_col1:
+            if st.button("COVID Microchips", use_container_width=True):
+                st.session_state.test_claim = "COVID-19 vaccines contain microchips for government tracking"
+            if st.button("Flat Earth", use_container_width=True):
+                st.session_state.test_claim = "The Earth is flat and NASA is lying"
+                
+        with quick_col2:
+            if st.button("5G Coronavirus", use_container_width=True):
+                st.session_state.test_claim = "5G networks spread coronavirus"
+            if st.button("Climate Hoax", use_container_width=True):
+                st.session_state.test_claim = "Climate change is a hoax created by scientists"
+        
+        # Claim input
         user_claim = st.text_area(
-            "Enter a claim or statement to verify:",
-            placeholder="Example: 'Climate change is a hoax created by scientists'",
-            height=120,
+            "Or enter your own claim to verify:",
+            value=st.session_state.get('test_claim', ''),
+            placeholder="Example: 'COVID-19 vaccines contain microchips for government tracking'",
+            height=100,
             key="claim_input"
         )
         
-        if st.button("🚀 Verify with 5 ML Models", type="primary", use_container_width=True):
-            if user_claim.strip():
-                if not ml_checker.is_trained:
-                    with st.spinner("Training AI models with selected data..."):
-                        ml_checker.train_models(use_uploaded_data=use_uploaded_data,
-                                              uploaded_file=uploaded_file)
-                st.session_state.current_claim = user_claim
-                st.rerun()
+        verify_disabled = not ml_checker.is_trained
+        
+        if st.button("🚀 Verify Claim", 
+                    type="primary", 
+                    use_container_width=True,
+                    disabled=verify_disabled):
+            
+            if not user_claim.strip():
+                st.error("❌ Please enter a claim to verify")
+            elif not ml_checker.is_trained:
+                st.error("❌ Please train models first using the button in sidebar")
             else:
-                st.warning("Please enter a claim to verify.")
-    
-    # Display results (your existing results display code here)
-    # ... [rest of your display code remains the same]
-
-if __name__ == "__main__":
-    main()
+                # Store current claim
+                st.session_state.current_
