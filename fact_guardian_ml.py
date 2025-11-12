@@ -403,4 +403,112 @@ def main():
                 st.error("❌ Please train models first using the button in sidebar")
             else:
                 # Store current claim
-                st.session_state.current_
+                st.session_state.current_claim = user_claim
+                st.session_state.show_results = True
+                st.rerun()
+    
+    with col2:
+        st.markdown("### 📊 System Status")
+        if ml_checker.is_trained:
+            st.success("✅ Models Trained & Ready")
+            col2_1, col2_2 = st.columns(2)
+            with col2_1:
+                st.metric("Models Ready", "5/5")
+            with col2_2:
+                avg_accuracy = np.mean([result['accuracy'] for result in ml_checker.model_results.values()])
+                st.metric("Avg Accuracy", f"{avg_accuracy:.1%}")
+        else:
+            st.error("❌ Models Not Trained")
+            st.info("Click 'Train Models First' in sidebar")
+    
+    # Display results if available
+    if st.session_state.get('show_results', False) and st.session_state.get('current_claim'):
+        user_claim = st.session_state.current_claim
+        
+        st.markdown("---")
+        st.markdown(f"### 📝 Analyzing: *\"{user_claim}\"*")
+        
+        # Create tabs for different result types
+        tab1, tab2 = st.tabs(["🤖 ML Model Analysis", "📰 Fact Check Results"])
+        
+        with tab1:
+            st.markdown("#### Machine Learning Predictions")
+            
+            # Get ML predictions
+            with st.spinner("🧠 Analyzing with AI models..."):
+                ml_predictions, confidences = ml_checker.predict_claim(user_claim)
+            
+            if ml_predictions:
+                # Display ML Results
+                results_data = []
+                for model_name, prediction in ml_predictions.items():
+                    confidence = confidences[model_name]
+                    verdict = "✅ TRUE" if prediction == 1 else "❌ FALSE"
+                    accuracy = ml_checker.model_results[model_name]['accuracy']
+                    
+                    results_data.append({
+                        'Model': model_name,
+                        'Verdict': verdict,
+                        'Confidence': f"{confidence:.1%}",
+                        'Training Accuracy': f"{accuracy:.1%}"
+                    })
+                
+                results_df = pd.DataFrame(results_data)
+                st.dataframe(results_df, use_container_width=True)
+                
+                # Overall consensus
+                true_count = sum(1 for p in ml_predictions.values() if p == 1)
+                false_count = sum(1 for p in ml_predictions.values() if p == 0)
+                consensus = "TRUE" if true_count > false_count else "FALSE"
+                
+                st.markdown(f"#### 🎯 Overall ML Consensus: **{consensus}** ({true_count}-{false_count})")
+        
+        with tab2:
+            st.markdown("#### External Fact Check Verification")
+            
+            # Get fact check results
+            fact_checks = get_fact_check_results(user_claim)
+            
+            if fact_checks:
+                st.success(f"✅ Found {len(fact_checks)} verified fact-check(s)")
+                
+                for i, check in enumerate(fact_checks[:4]):  # Show top 4
+                    rating_class = get_rating_class(check['rating'])
+                    
+                    st.markdown(f"""
+                    <div class="fact-check-card">
+                        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 10px;">
+                            <h4 style="margin: 0; color: #333; flex: 1;">{check['title']}</h4>
+                            <span class="{rating_class}">{check['rating']}</span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
+                            <span class="publisher-badge">📰 {check['publisher']}</span>
+                            {f"<small style='color: #666;'>📅 {check['claim_date']}</small>" if check['claim_date'] else ""}
+                        </div>
+                        <p style="color: #666; font-style: italic; margin-bottom: 12px;">"{check['original_claim'][:200]}..."</p>
+                        <a href="{check['url']}" target="_blank" style="
+                            display: inline-block; 
+                            background: linear-gradient(135deg, #667eea, #764ba2); 
+                            color: white; 
+                            padding: 8px 16px; 
+                            border-radius: 20px; 
+                            text-decoration: none; 
+                            font-weight: 600;
+                            font-size: 0.9em;
+                        ">📖 Read Full Analysis →</a>
+                    </div>
+                    """, unsafe_allow_html=True)
+            else:
+                st.warning("""
+                **No external fact-check results found for this specific claim.**
+                
+                This could mean:
+                - The claim is very new and hasn't been fact-checked yet
+                - The phrasing is unique or highly specific
+                - Try rephrasing your claim with more common terminology
+                
+                *The ML models above are still providing AI-powered analysis based on training data.*
+                """)
+
+if __name__ == "__main__":
+    main()
