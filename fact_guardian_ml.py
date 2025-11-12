@@ -517,9 +517,9 @@ def main():
             <h4>🎯 Recommended Claims to Verify:</h4>
             <ul>
                 <li>"Donald Trump won the 2020 presidential election"</li>
-                <li>"Dead people voted in the 2020 election"</li>
-                <li>"5G networks spread coronavirus"</li>
-                <li>"The Earth is flat and NASA is lying"</li>
+                <li>"Cancer can be cured with baking soda"</li>
+                <li>"Joe Biden implemented a ban on gas stoves"</li>
+                <li>"The Moon landing was faked in a Hollywood studio"</li>
             </ul>
             <p><small>These claims are guaranteed to return fact-check results</small></p>
         </div>
